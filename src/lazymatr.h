@@ -7,7 +7,6 @@
 #pragma once
 //---------------------------------------------------------------------------
 #include <assert.h>
-#include <math.h>
 #include <memory.h>
 //---------------------------------------------------------------------------
 #include <ostream>
@@ -15,6 +14,7 @@
 #include <type_traits>
 #include <utility>
 #include <tuple>
+#include <cmath>
 //---------------------------------------------------------------------------
 #ifdef _MSC_VER
 #	pragma inline_depth( 255 )
@@ -24,6 +24,10 @@
 #endif
 //---------------------------------------------------------------------------
 /// Lazy Matrix
+//---------------------------------------------------------------------------
+inline unsigned short operator"" _us(char16_t x) {
+	return static_cast<unsigned short>(x);
+}
 //---------------------------------------------------------------------------
 namespace mtr{
 //---------------------------------------------------------------------------
@@ -59,6 +63,12 @@ struct Select2<f, 0, T1, T2> {
 
 	typedef T2 Result;
 };
+//---------------------------------------------------------------------------
+template<std::size_t ...indices, class T, class F>
+auto for_each_impl(std::integer_sequence<std::size_t, indices...> s, MatrixBase<T> const& m, F func) {
+
+	return MatrixBase<T>{ func(m[indices])... };
+}
 //---------------------------------------------------------------------------
 // unroll
 //---------------------------------------------------------------------------
@@ -1046,6 +1056,11 @@ struct Int2Type {
 	enum {val = i};
 };
 //---------------------------------------------------------------------------
+template<std::size_t l, std::size_t r>
+struct static_min {
+	enum { value = (l<r) ? l : r };
+};
+//---------------------------------------------------------------------------
 template<typename M>
 class MatrixBase : public M {
 
@@ -1084,6 +1099,16 @@ public:
 	constexpr MatrixBase(const Vector<rows, Element>& first, T... next)
 		: MatrixBase{ Int2Type<0>(), std::make_tuple(first, next...), std::make_index_sequence<cols>{}} {}
 
+	// initialization from vector and additional constant
+	// for example vec4f{ vec3f{...}, 1.0f }
+	constexpr MatrixBase(const Vector<rows - 1, Element>& first, Element last)
+		: MatrixBase{ std::make_index_sequence<rows - 1>{}, first, last } {}
+
+	// initialization from different dimention vector 
+	template<std::size_t n>
+	constexpr MatrixBase(const Vector<n, Element>& first)
+		: MatrixBase{ std::make_index_sequence <static_min<n, rows>::value> {}, first } {}
+
 private:
 	
 	template<std::size_t ...indices, class ...T>
@@ -1101,6 +1126,19 @@ private:
 	template<class U, std::size_t ...indices, class ...T>
 	constexpr MatrixBase(Int2Type<rows>, U const& t, std::integer_sequence<std::size_t, indices...> s, T... next)
 		: MatrixBase{next... } {}
+
+	template<std::size_t ...indices>
+	constexpr MatrixBase(std::integer_sequence<std::size_t, indices...> s, const Vector<rows - 1, Element>& first, Element last)
+		: MatrixBase{ first[indices]..., last } {}
+
+	template<std::size_t ...indices, std::size_t n>
+	constexpr MatrixBase(std::integer_sequence<std::size_t, indices...> s, const Vector<n, Element>& first)
+		: MatrixBase{ first[indices]... } {}
+
+	template<class F>
+	Self for_each(F func) const {
+		return for_each_impl(std::make_index_sequence<dim>{}, *this, func);
+	}
 
 public: 
 
@@ -1265,6 +1303,10 @@ public:
 				return false;
 
 		return true;
+	}
+	
+	Self floor() const {
+		return for_each( [](auto const& x) { return std::floor(x);} );
 	}
 };
 //---------------------------------------------------------------------------
